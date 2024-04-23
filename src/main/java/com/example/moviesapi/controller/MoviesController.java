@@ -1,6 +1,11 @@
 package com.example.moviesapi.controller;
 
+import org.springframework.hateoas.EntityModel;
+import org.springframework.hateoas.CollectionModel;
+
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -16,6 +21,12 @@ import java.util.Optional;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.PutMapping;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.stream.Collectors;
+
+import org.springframework.hateoas.server.mvc.WebMvcLinkBuilder;
 
 
 
@@ -25,17 +36,44 @@ import org.springframework.web.bind.annotation.PutMapping;
 @RestController
 @RequestMapping("/movies")
 public class MoviesController {
+
+    private static final Logger log = LoggerFactory.getLogger(MoviesController.class);
+
     @Autowired
     private MovieService movieService;
 
     @GetMapping()
-    public List<Movie> getMovies() {
-        return movieService.getAllMovies();
+    public CollectionModel<EntityModel<Movie>> getMovies() {
+        List<Movie> movies = movieService.getAllMovies();
+        log.info("GET /movies");
+        log.info("Retornando todas las pelicualas");
+
+        List<EntityModel<Movie>> moviesResources = movies.stream()
+        .map( movie -> EntityModel.of(movie,
+            WebMvcLinkBuilder.linkTo(WebMvcLinkBuilder.methodOn(this.getClass()).getMovieById(movie.getId())).withSelfRel()
+        ))
+        .collect(Collectors.toList());
+       
+        WebMvcLinkBuilder linkTo = WebMvcLinkBuilder.linkTo(WebMvcLinkBuilder.methodOn(this.getClass()).getMovies());
+        CollectionModel<EntityModel<Movie>> resources = CollectionModel.of(moviesResources, linkTo.withRel("movies"));
+
+        return resources;
     }
 
     @GetMapping("/{idMovie}")
-    public Optional<Movie> getMovieById(@PathVariable Long idMovie) {
-        return movieService.getMovieById(idMovie);
+    public ResponseEntity<?> getMovieById(@PathVariable Long idMovie) {
+        Optional<Movie> movie = movieService.getMovieById(idMovie);
+        if(movie.isEmpty()){
+            log.error("No se encontro la pelicula con id {}",idMovie);
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ErrorResponse("Movie not found with id: " + idMovie));
+
+            // return ResponseEntity.notFound().build();
+        }
+
+        log.info("Pelicula encontrada");
+        return ResponseEntity.ok(movie);
+
+    
     }
 
     @PostMapping()
@@ -53,7 +91,16 @@ public class MoviesController {
         movieService.deleteMovie(idMovie);
     }
     
-    
 
-    
+    static class ErrorResponse{
+        private final String message;
+        
+        public ErrorResponse(String message){
+            this.message = message;
+        }
+
+        public String getMessage() {
+            return message;
+        }
+    }
 }
